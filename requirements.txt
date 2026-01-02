@@ -11,3 +11,5 @@ torchaudio
 ollama
 pydantic
 keyboard
+pyttsx3
+google-genai

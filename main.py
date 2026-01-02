@@ -1,212 +1,289 @@
-import torch
-import hydra
-import cv2
-import time
-from pipelines.pipeline import InferencePipeline
-import numpy as np
-from datetime import datetime
-from ollama import chat
-from pydantic import BaseModel
-import keyboard
-from concurrent.futures import ThreadPoolExecutor
 import os
+import time
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
+import cv2
+import hydra
+import torch
+import numpy as np
 
-# pydantic model for the chat output
-class ChaplinOutput(BaseModel):
-    list_of_changes: str
-    corrected_text: str
+# --- 1. OPTIMIZATION: LIMIT THREADS ---
+# Keeps the OS responsive while speaking
+os.environ["OMP_NUM_THREADS"] = "3" 
+os.environ["MKL_NUM_THREADS"] = "3"
 
+try:
+    from llama_cpp import Llama
+except ImportError:
+    print("[ERROR] llama-cpp-python not found.")
+    exit(1)
+
+try:
+    from picamera2 import Picamera2
+except ImportError:
+    print("[ERROR] picamera2 not found.")
+    exit(1)
+
+from pipelines.pipeline import InferencePipeline
 
 class Chaplin:
     def __init__(self):
+        # --- VOICE HELPERS INITIALIZED FIRST ---
+        self.last_spoken_time = 0
+        
+        # Announce Startup
+        print("[VOICE] Initializing  system...")
+        self.speak_text("Initializing  system", wait=True)
+
         self.vsr_model = None
+        
+        # --- CONFIGURATION ---
+        self.fps = 25 
+        self.width = 640 
+        self.height = 480
+        self.output_prefix = "pi_cam_rec"
+        self.use_llm = True 
+        
+        # --- LOCAL LLM LOAD ---
+        self.model_path = "models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+        
+        if self.use_llm:
+            if not os.path.exists(self.model_path):
+                self.speak_text("Error. Language model not found.", wait=True)
+                print(f"[ERROR] Model not found at {self.model_path}")
+                exit(1)
 
-        # flag to toggle recording
+            print("[INIT] Loading local LLM...")
+            self.speak_text("Loading language model.", wait=True) # Voice Instruction
+            
+            self.llm = Llama(
+                model_path=self.model_path,
+                n_ctx=256,
+                n_threads=3,
+                verbose=False
+            )
+            print("[INIT] Local LLM Loaded.")
+        else:
+            self.llm = None
+
         self.recording = False
-
-        # thread stuff
         self.executor = ThreadPoolExecutor(max_workers=1)
 
-        # video params
-        self.output_prefix = "webcam"
-        self.res_factor = 3
-        self.fps = 16
-        self.frame_interval = 1 / self.fps
-        self.frame_compression = 25
+    def speak_text(self, text, wait=False):
+        """
+        wait=True: Pauses code until speaking is done (Good for startup instructions)
+        wait=False: Speaks in background (Good for results)
+        """
+        if not text: return
+        try:
+            # -s 160 = speed (slightly faster than default)
+            cmd = ["espeak", "-s", "160", text]
+            
+            if wait:
+                # Blocks execution so heavy CPU load doesn't stutter the audio
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                # Runs in background
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            print(f"[ERROR] Audio playback failed: {e}")
+
+    def play_tone(self, frequency, duration):
+        try:
+            subprocess.Popen(
+                ["play", "-n", "-q", "synth", str(duration), "sin", str(frequency)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        except:
+            pass
+
+    def refine_with_local_llm(self, raw_text):
+        if not self.use_llm or not raw_text:
+            return raw_text
+
+        messages = [
+            {
+                "role": "system",
+                "content": "Correct grammar and homophenes. Output ONLY the corrected text."
+            },
+            {
+                "role": "user",
+                "content": f"{raw_text}"
+            }
+        ]
+
+        try:
+            output = self.llm.create_chat_completion(
+                messages=messages,
+                max_tokens=60,
+                temperature=0.1
+            )
+            return output['choices'][0]['message']['content'].strip().strip('"')
+        except Exception as e:
+            print(f"[LLM ERROR] {e}")
+            return raw_text
 
     def perform_inference(self, video_path):
-        # perform inference on the video with the vsr model
-        output = self.vsr_model(video_path)
+        if not os.path.exists(video_path): return
 
-        # write the raw output
-        keyboard.write(output)
+        try:
+            print("\n[PROCESSING] VSR Inference...")
+            #self.speak_text("Processing", wait=False) # Brief feedback
+            
+            start_t = time.time()
+            raw_output = self.vsr_model(video_path)
+            vsr_time = time.time() - start_t
+            
+            print(f"[RESULT] Raw: '{raw_output}' ({vsr_time:.2f}s)")
 
-        # shift left to select the entire output
-        cmd = ""
-        for i in range(len(output)):
-            cmd += 'shift+left, '
-        cmd = cmd[:-2]
-        keyboard.press_and_release(cmd)
+            final_output = self.refine_with_local_llm(raw_output)
+            
+            if final_output != raw_output:
+                print(f"[LLM FIX] -> '{final_output}'")
 
-        # perform inference on the raw output to get back a "correct" version
-        response = chat(
-            model='llama3.2',
-            messages=[
-                {
-                    'role': 'system',
-                    'content': f"You are an assistant that helps make corrections to the output of a lipreading model. The text you will receive was transcribed using a video-to-text system that attempts to lipread the subject speaking in the video, so the text will likely be imperfect.\n\nIf something seems unusual, assume it was mistranscribed. Do your best to infer the words actually spoken, and make changes to the mistranscriptions in your response. Do not add more words or content, just change the ones that seem to be out of place (and, therefore, mistranscribed). Do not change even the wording of sentences, just individual words that look nonsensical in the context of all of the other words in the sentence.\n\nAlso, add correct punctuation to the entire text. ALWAYS end each sentence with the appropriate sentence ending: '.', '?', or '!'. The input text in all-caps, although your respose should be capitalized correctly and should NOT be in all-caps.\n\nReturn the corrected text in the format of 'list_of_changes' and 'corrected_text'."
-                },
-                {
-                    'role': 'user',
-                    'content': f"Transcription:\n\n{output}"
-                }
-            ],
-            format=ChaplinOutput.model_json_schema()
-        )
-
-        # get only the corrected text
-        chat_output = ChaplinOutput.model_validate_json(
-            response.message.content)
-
-        # if last character isn't a sentence ending (happens sometimes), add a period
-        if chat_output.corrected_text[-1] not in ['.', '?', '!']:
-            chat_output.corrected_text += '.'
-
-        # write the corrected text
-        keyboard.write(chat_output.corrected_text + " ")
-
-        # return the corrected text and the video path
-        return {
-            "output": chat_output.corrected_text,
-            "video_path": video_path
-        }
+            print(f"[SPEAKING] {final_output}")
+            self.speak_text(final_output, wait=False)
+            
+            return {"output": final_output, "video_path": video_path}
+            
+        except Exception as e:
+            print(f"[ERROR] {e}")
+            self.speak_text("Error in processing", wait=False)
+            return {"output": "", "video_path": video_path}
 
     def start_webcam(self):
-        # init webcam
-        cap = cv2.VideoCapture(0)
+        print("[INIT] Starting Camera...")
+        self.speak_text("Starting camera module.", wait=True) # Voice Instruction
 
-        # set webcam resolution, and get frame dimensions
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640 // self.res_factor)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480 // self.res_factor)
-        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        try:
+            picam2 = Picamera2()
+            config = picam2.create_video_configuration(
+                main={"size": (self.width, self.height), "format": "BGR888"} 
+            )
+            picam2.configure(config)
+            picam2.start()
+        except Exception as e:
+            self.speak_text("Camera failed to start.", wait=True)
+            print(f"[ERROR] Camera failed: {e}")
+            return
 
         last_frame_time = time.time()
-
+        frame_interval = 1.0 / self.fps
+        
         futures = []
         output_path = ""
         out = None
         frame_count = 0
 
+        print("\n[READY] System Ready. Press 'R' to Record, 'Q' to Quit")
+        # Final "Ready" instruction
+        self.speak_text("System ready. Press R to record.", wait=True)
+
         while True:
             key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                # remove any remaining videos that were saved to disk
-                for file in os.listdir():
-                    if file.startswith(self.output_prefix) and file.endswith('.mp4'):
-                        os.remove(file)
+            
+            if key == ord("q"):
+                print("\n[SHUTDOWN] Exiting...")
+                self.speak_text("Shutting down. Goodbye.", wait=True)
                 break
+            
+            if key == ord("r"):
+                self.recording = not self.recording
+                if self.recording:
+                    print("\n[REC] Started")
+                    self.play_tone(880, 0.15) 
+                else:
+                    print("\n[REC] Stopped")
+                    self.play_tone(440, 0.15)
 
             current_time = time.time()
-
-            # conditional ensures that the video is recorded at the correct frame rate
-            if current_time - last_frame_time >= self.frame_interval:
-                ret, frame = cap.read()
-                if ret:
-                    # frame compression
-                    encode_param = [
-                        int(cv2.IMWRITE_JPEG_QUALITY), self.frame_compression]
-                    _, buffer = cv2.imencode('.jpg', frame, encode_param)
-                    compressed_frame = cv2.imdecode(
-                        buffer, cv2.IMREAD_GRAYSCALE)
-
+            if current_time - last_frame_time >= frame_interval:
+                frame = picam2.capture_array()
+                
+                if frame is not None:
+                    display_frame = frame 
+                    
                     if self.recording:
                         if out is None:
-                            output_path = self.output_prefix + \
-                                str(time.time_ns() // 1_000_000) + '.mp4'
+                            output_path = f"{self.output_prefix}_{time.time_ns()}.mp4"
                             out = cv2.VideoWriter(
-                                output_path,
-                                cv2.VideoWriter_fourcc(*'mp4v'),
-                                self.fps,
-                                (frame_width, frame_height),
-                                False  # isColor
+                                output_path, 
+                                cv2.VideoWriter_fourcc(*"mp4v"), 
+                                self.fps, 
+                                (self.width, self.height)
                             )
-
-                        out.write(compressed_frame)
-
+                        
+                        out.write(frame)
                         last_frame_time = current_time
-
-                        # circle to indicate recording, only appears in the window and is not present in video saved to disk
-                        cv2.circle(compressed_frame, (frame_width -
-                                                      20, 20), 10, (0, 0, 0), -1)
-
                         frame_count += 1
-                    # check if not recording AND video is at least 2 seconds long
+                        
+                        if frame_count % 5 == 0:
+                            display_frame = frame.copy()
+                            cv2.circle(display_frame, (30, 30), 10, (0, 0, 255), -1)
+
                     elif not self.recording and frame_count > 0:
-                        if out is not None:
-                            out.release()
-
-                        # only run inference if the video is at least 2 seconds long
-                        if frame_count >= self.fps * 2:
-                            futures.append(self.executor.submit(
-                                self.perform_inference, output_path))
+                        if out: out.release(); out = None
+                        
+                        duration = frame_count / self.fps
+                        if duration >= 0.5:
+                            print(f"[JOB] Processing {duration:.1f}s clip...")
+                            futures.append(self.executor.submit(self.perform_inference, output_path))
                         else:
-                            os.remove(output_path)
-
-                        output_path = self.output_prefix + \
-                            str(time.time_ns() // 1_000_000) + '.mp4'
-                        out = cv2.VideoWriter(
-                            output_path,
-                            cv2.VideoWriter_fourcc(*'mp4v'),
-                            self.fps,
-                            (frame_width, frame_height),
-                            False  # isColor
-                        )
-
+                            if os.path.exists(output_path): os.remove(output_path)
                         frame_count = 0
 
-                    # display the frame in the window
-                    cv2.imshow('Chaplin', cv2.flip(compressed_frame, 1))
+                    cv2.imshow("Chaplin Pi", display_frame)
 
-            # ensures that videos are handled in the order they were recorded
             for fut in futures:
                 if fut.done():
                     result = fut.result()
-                    # once done processing, delete the video with the video path
-                    os.remove(result["video_path"])
+                    if result and os.path.exists(result["video_path"]): 
+                        os.remove(result["video_path"])
                     futures.remove(fut)
                 else:
                     break
 
-        # release everything
-        cap.release()
-        if out:
-            out.release()
+        picam2.stop()
+        if out: out.release()
         cv2.destroyAllWindows()
-
-    def on_action(self, event):
-        # toggles recording when alt key is pressed
-        if event.event_type == keyboard.KEY_DOWN and event.name == 'alt':
-            self.recording = not self.recording
-
+        self.executor.shutdown(wait=False)
 
 @hydra.main(version_base=None, config_path="hydra_configs", config_name="default")
 def main(cfg):
     chaplin = Chaplin()
+    
+    # --- VOICE INSTRUCTION: VSR LOADING ---
+    print("[INIT] Loading VSR Model...")
+    chaplin.speak_text("Loading visual speech recognition model.", wait=True)
+    
+    # OPTIMIZATION
+    torch.set_num_threads(3)
+    torch.backends.quantized.engine = 'qnnpack'
+    device = torch.device("cpu")
+    
+    try:
+        chaplin.vsr_model = InferencePipeline(
+            cfg.config_filename,
+            device=device,
+            detector=cfg.detector,
+            face_track=True,
+        )
+        
+        # QUANTIZATION
+        print("[INIT] Quantizing model...")
+        if hasattr(chaplin.vsr_model, 'model'):
+            chaplin.vsr_model.model = torch.quantization.quantize_dynamic(
+                chaplin.vsr_model.model, 
+                {torch.nn.Linear, torch.nn.LSTM, torch.nn.GRU}, 
+                dtype=torch.qint8
+            )
+        
+        chaplin.start_webcam()
 
-    # hook to toggle recording
-    keyboard.hook(lambda e: chaplin.on_action(e))
+    except Exception as e:
+        chaplin.speak_text("Fatal error. System stopping.", wait=True)
+        print(f"[FATAL] {e}")
 
-    # load the model
-    chaplin.vsr_model = InferencePipeline(
-        cfg.config_filename, device=torch.device(f"cuda:{cfg.gpu_idx}" if torch.cuda.is_available(
-        ) and cfg.gpu_idx >= 0 else "cpu"), detector=cfg.detector, face_track=True)
-    print("Model loaded successfully!")
-
-    # start the webcam video capture
-    chaplin.start_webcam()
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
