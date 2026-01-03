@@ -2,6 +2,7 @@ import os
 import time
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+import RPi.GPIO as GPIO  # <--- NEW IMPORT
 
 import cv2
 import hydra
@@ -29,6 +30,21 @@ from pipelines.pipeline import InferencePipeline
 
 class Chaplin:
     def __init__(self):
+        # --- GPIO SETUP ---
+        GPIO.setmode(GPIO.BCM)
+        self.BTN_REC = 17   # Button 1: Toggle Record
+        self.BTN_QUIT = 27  # Button 2: Quit
+        
+        # Enable internal pull-up resistors
+        GPIO.setup(self.BTN_REC, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.setup(self.BTN_QUIT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+        # Add event detection (callbacks defined below)
+        GPIO.add_event_detect(self.BTN_REC, GPIO.FALLING, 
+                              callback=self.toggle_record_callback, bouncetime=300)
+        GPIO.add_event_detect(self.BTN_QUIT, GPIO.FALLING, 
+                              callback=self.quit_callback, bouncetime=300)
+
         # --- VOICE HELPERS INITIALIZED FIRST ---
         self.last_spoken_time = 0
         
@@ -68,7 +84,23 @@ class Chaplin:
             self.llm = None
 
         self.recording = False
+        self.shutdown_flag = False # Flag to control main loop exit
         self.executor = ThreadPoolExecutor(max_workers=1)
+
+    # --- GPIO CALLBACKS ---
+    def toggle_record_callback(self, channel):
+        # Toggle recording state
+        self.recording = not self.recording
+        if self.recording:
+            print("\n[REC] Started")
+            self.play_tone(880, 0.15) 
+        else:
+            print("\n[REC] Stopped")
+            self.play_tone(440, 0.15)
+
+    def quit_callback(self, channel):
+        print("\n[GPIO] Quit button pressed.")
+        self.shutdown_flag = True
 
     def speak_text(self, text, wait=False):
         """
@@ -176,26 +208,21 @@ class Chaplin:
         out = None
         frame_count = 0
 
-        print("\n[READY] System Ready. Press 'R' to Record, 'Q' to Quit")
+        print("\n[READY] System Ready. Press BUTTON 1 to Record, BUTTON 2 to Quit")
         # Final "Ready" instruction
-        self.speak_text("System ready. Press R to record.", wait=True)
+        self.speak_text("System ready. Press button one to record.", wait=True)
 
         while True:
-            key = cv2.waitKey(1) & 0xFF
+            # IMPORTANT: We still need waitKey for OpenCV window to refresh
+            # But we ignore the return value mostly, relying on GPIO flags
+            cv2.waitKey(1)
             
-            if key == ord("q"):
+            if self.shutdown_flag:
                 print("\n[SHUTDOWN] Exiting...")
                 self.speak_text("Shutting down. Goodbye.", wait=True)
                 break
             
-            if key == ord("r"):
-                self.recording = not self.recording
-                if self.recording:
-                    print("\n[REC] Started")
-                    self.play_tone(880, 0.15) 
-                else:
-                    print("\n[REC] Stopped")
-                    self.play_tone(440, 0.15)
+            # Note: Recording toggle logic removed from here; handled by GPIO callback
 
             current_time = time.time()
             if current_time - last_frame_time >= frame_interval:
@@ -247,6 +274,7 @@ class Chaplin:
         picam2.stop()
         if out: out.release()
         cv2.destroyAllWindows()
+        GPIO.cleanup() # Reset GPIO pins
         self.executor.shutdown(wait=False)
 
 @hydra.main(version_base=None, config_path="hydra_configs", config_name="default")
@@ -284,6 +312,7 @@ def main(cfg):
     except Exception as e:
         chaplin.speak_text("Fatal error. System stopping.", wait=True)
         print(f"[FATAL] {e}")
+        GPIO.cleanup() # Ensure cleanup on error
 
 if __name__ == "__main__":
     main()
