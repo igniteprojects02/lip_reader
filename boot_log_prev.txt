@@ -1,0 +1,104 @@
+llama_context: n_ctx_per_seq (256) < n_ctx_train (32768) -- the full capacity of the model will not be utilized
+/home/fawstech/vsr_v2/chaplin/.venv/lib/python3.11/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+/home/fawstech/.local/lib/python3.11/site-packages/keras/src/export/tf2onnx_lib.py:8: FutureWarning: In the future `np.object` will be defined as the corresponding NumPy scalar.
+  if not hasattr(np, "object"):
+/home/fawstech/vsr_v2/chaplin/main.py:304: DeprecationWarning: torch.ao.quantization is deprecated and will be removed in 2.10. 
+For migrations of users: 
+1. Eager mode quantization (torch.ao.quantization.quantize, torch.ao.quantization.quantize_dynamic), please migrate to use torchao eager mode quantize_ API instead 
+2. FX graph mode quantization (torch.ao.quantization.quantize_fx.prepare_fx,torch.ao.quantization.quantize_fx.convert_fx, please migrate to use torchao pt2e quantization API instead (prepare_pt2e, convert_pt2e) 
+3. pt2e quantization has been migrated to torchao (https://github.com/pytorch/ao/tree/main/torchao/quantization/pt2e) 
+see https://github.com/pytorch/ao/issues/2259 for more details
+  chaplin.vsr_model.model = torch.quantization.quantize_dynamic(
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+W0000 00:00:1767424069.888420    1853 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1767424069.889197    1857 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+[0:01:38.996873175] [1788] [1;32m INFO [1;37mCamera [1;34mcamera_manager.cpp:330 [0mlibcamera v0.5.2+99-bfd68f78
+[0:01:39.003975916] [1866] [1;32m INFO [1;37mRPI [1;34mpisp.cpp:720 [0mlibpisp version v1.2.1 981977ff21f3 29-04-2025 (14:13:50)
+[0:01:39.037055159] [1866] [1;32m INFO [1;37mIPAProxy [1;34mipa_proxy.cpp:180 [0mUsing tuning file /usr/share/libcamera/ipa/rpi/pisp/imx219.json
+[0:01:39.045317465] [1866] [1;32m INFO [1;37mCamera [1;34mcamera_manager.cpp:220 [0mAdding camera '/base/axi/pcie@1000120000/rp1/i2c@88000/imx219@10' for pipeline handler rpi/pisp
+[0:01:39.045344668] [1866] [1;32m INFO [1;37mRPI [1;34mpisp.cpp:1179 [0mRegistered camera /base/axi/pcie@1000120000/rp1/i2c@88000/imx219@10 to CFE device /dev/media0 and ISP device /dev/media1 using PiSP variant BCM2712_D0
+[0:01:39.048569722] [1788] [1;32m INFO [1;37mCamera [1;34mcamera.cpp:1215 [0mconfiguring streams: (0) 640x480-BGR888/SMPTE170M/Rec709/None/Full (1) 640x480-BGGR_PISP_COMP1/RAW
+[0:01:39.048675590] [1866] [1;32m INFO [1;37mRPI [1;34mpisp.cpp:1483 [0mSensor: /base/axi/pcie@1000120000/rp1/i2c@88000/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected CFE format: 640x480-PC1B/RAW
+/home/fawstech/vsr_v2/chaplin/.venv/lib/python3.11/site-packages/torchvision/io/_video_deprecation_warning.py:9: UserWarning: The video decoding and encoding capabilities of torchvision are deprecated from version 0.22 and will be removed in version 0.24. We recommend that you migrate to TorchCodec, where we'll consolidate the future decoding/encoding capabilities of PyTorch: https://github.com/pytorch/torchcodec
+  warnings.warn(
+/home/fawstech/vsr_v2/chaplin/.venv/lib/python3.11/site-packages/google/protobuf/symbol_database.py:55: UserWarning: SymbolDatabase.GetPrototype() is deprecated. Please use message_factory.GetMessageClass() instead. SymbolDatabase.GetPrototype() will be removed soon.
+  warnings.warn('SymbolDatabase.GetPrototype() is deprecated. Please '
+[W103 12:38:18.189929067 qlinear_dynamic.cpp:251] Warning: Currently, qnnpack incorrectly ignores reduce_range when it is set to true; this may change in a future release. (function operator())
+/home/fawstech/vsr_v2/chaplin/.venv/lib/python3.11/site-packages/torchvision/io/_video_deprecation_warning.py:9: UserWarning: The video decoding and encoding capabilities of torchvision are deprecated from version 0.22 and will be removed in version 0.24. We recommend that you migrate to TorchCodec, where we'll consolidate the future decoding/encoding capabilities of PyTorch: https://github.com/pytorch/torchcodec
+  warnings.warn(
+/home/fawstech/vsr_v2/chaplin/.venv/lib/python3.11/site-packages/google/protobuf/symbol_database.py:55: UserWarning: SymbolDatabase.GetPrototype() is deprecated. Please use message_factory.GetMessageClass() instead. SymbolDatabase.GetPrototype() will be removed soon.
+  warnings.warn('SymbolDatabase.GetPrototype() is deprecated. Please '
+/home/fawstech/vsr_v2/chaplin/.venv/lib/python3.11/site-packages/torchvision/io/_video_deprecation_warning.py:9: UserWarning: The video decoding and encoding capabilities of torchvision are deprecated from version 0.22 and will be removed in version 0.24. We recommend that you migrate to TorchCodec, where we'll consolidate the future decoding/encoding capabilities of PyTorch: https://github.com/pytorch/torchcodec
+  warnings.warn(
+/home/fawstech/vsr_v2/chaplin/.venv/lib/python3.11/site-packages/google/protobuf/symbol_database.py:55: UserWarning: SymbolDatabase.GetPrototype() is deprecated. Please use message_factory.GetMessageClass() instead. SymbolDatabase.GetPrototype() will be removed soon.
+  warnings.warn('SymbolDatabase.GetPrototype() is deprecated. Please '
+/home/fawstech/vsr_v2/chaplin/.venv/lib/python3.11/site-packages/torchvision/io/_video_deprecation_warning.py:9: UserWarning: The video decoding and encoding capabilities of torchvision are deprecated from version 0.22 and will be removed in version 0.24. We recommend that you migrate to TorchCodec, where we'll consolidate the future decoding/encoding capabilities of PyTorch: https://github.com/pytorch/torchcodec
+  warnings.warn(
+/home/fawstech/vsr_v2/chaplin/.venv/lib/python3.11/site-packages/google/protobuf/symbol_database.py:55: UserWarning: SymbolDatabase.GetPrototype() is deprecated. Please use message_factory.GetMessageClass() instead. SymbolDatabase.GetPrototype() will be removed soon.
+  warnings.warn('SymbolDatabase.GetPrototype() is deprecated. Please '
+/home/fawstech/vsr_v2/chaplin/.venv/lib/python3.11/site-packages/torchvision/io/_video_deprecation_warning.py:9: UserWarning: The video decoding and encoding capabilities of torchvision are deprecated from version 0.22 and will be removed in version 0.24. We recommend that you migrate to TorchCodec, where we'll consolidate the future decoding/encoding capabilities of PyTorch: https://github.com/pytorch/torchcodec
+  warnings.warn(
+/home/fawstech/vsr_v2/chaplin/.venv/lib/python3.11/site-packages/google/protobuf/symbol_database.py:55: UserWarning: SymbolDatabase.GetPrototype() is deprecated. Please use message_factory.GetMessageClass() instead. SymbolDatabase.GetPrototype() will be removed soon.
+  warnings.warn('SymbolDatabase.GetPrototype() is deprecated. Please '
+[VOICE] Initializing  system...
+[INIT] Loading local LLM...
+[INIT] Local LLM Loaded.
+[INIT] Loading VSR Model...
+[INIT] Quantizing model...
+[INIT] Starting Camera...
+
+[READY] System Ready. Press BUTTON 1 to Record, BUTTON 2 to Quit
+
+[REC] Started
+
+[REC] Stopped
+[JOB] Processing 3.4s clip...
+
+[PROCESSING] VSR Inference...
+[RESULT] Raw: 'OR A LINK' (22.93s)
+[LLM FIX] -> '[Link]'
+[SPEAKING] [Link]
+
+[REC] Started
+
+[REC] Stopped
+[JOB] Processing 4.2s clip...
+
+[PROCESSING] VSR Inference...
+[RESULT] Raw: 'WHO IS' (21.54s)
+[LLM FIX] -> 'WHO IS?'
+[SPEAKING] WHO IS?
+
+[REC] Started
+
+[REC] Stopped
+[JOB] Processing 4.2s clip...
+
+[PROCESSING] VSR Inference...
+[RESULT] Raw: 'OLD BIRD IS' (23.15s)
+[SPEAKING] OLD BIRD IS
+
+[REC] Started
+
+[REC] Stopped
+[JOB] Processing 2.8s clip...
+
+[PROCESSING] VSR Inference...
+[RESULT] Raw: 'GOOD MORNING' (18.50s)
+[SPEAKING] GOOD MORNING
+
+[REC] Started
+
+[REC] Stopped
+[JOB] Processing 3.9s clip...
+
+[PROCESSING] VSR Inference...
+[RESULT] Raw: 'I DON'T KNOW WHAT TO DO' (47.78s)
+[LLM FIX] -> 'I don't know what to do.'
+[SPEAKING] I don't know what to do.
+
+[GPIO] Quit button pressed.
+
+[SHUTDOWN] Exiting...

@@ -2,10 +2,9 @@ import os
 import time
 import subprocess
 import sys
-import RPi.GPIO as GPIO # <--- GPIO IMPORT
+import RPi.GPIO as GPIO 
 
 # --- 1. INSTANT FEEDBACK HELPER ---
-# We define this BEFORE importing heavy AI libraries so the Pi speaks immediately.
 def quick_speak(text):
     try:
         subprocess.Popen(["espeak", "-s", "160", text], 
@@ -13,11 +12,10 @@ def quick_speak(text):
     except:
         pass
 
-print("\n[BOOT] System detected. Starting...")
-quick_speak("System starting. Please wait.")
+print("\n[BOOT] System detected. Starting Headless Mode...")
+quick_speak("System starting headless.")
 
-# --- 2. HEAVY IMPORTS (The Slow Part) ---
-# We load these AFTER the first voice command
+# --- 2. IMPORTS ---
 print("[BOOT] Loading OpenCV (Camera)...")
 try:
     import cv2
@@ -26,11 +24,9 @@ except ImportError:
     quick_speak("Error. Camera library missing.")
     sys.exit(1)
 
-print("[BOOT] Loading AI Brain (PyTorch)...")
+print("[BOOT] Loading AI Brain...")
 import torch
 import numpy as np
-
-print("[BOOT] Loading Configuration...")
 import hydra
 from concurrent.futures import ThreadPoolExecutor
 
@@ -51,14 +47,12 @@ class Chaplin:
     def __init__(self):
         # --- GPIO SETUP ---
         GPIO.setmode(GPIO.BCM)
-        self.BTN_REC = 17   # Button 1: Toggle Record
-        self.BTN_QUIT = 27  # Button 2: Quit
+        self.BTN_REC = 17   
+        self.BTN_QUIT = 27  
         
-        # Enable internal pull-up resistors (Buttons connect to GND)
         GPIO.setup(self.BTN_REC, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(self.BTN_QUIT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
-        # Add event detection (Debounce = 300ms)
         GPIO.add_event_detect(self.BTN_REC, GPIO.FALLING, 
                               callback=self.toggle_record_callback, bouncetime=300)
         GPIO.add_event_detect(self.BTN_QUIT, GPIO.FALLING, 
@@ -78,14 +72,12 @@ class Chaplin:
         # --- LOCAL LLM LOAD ---
         self.model_path = "models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
         
-        # Announce libraries are done, now loading models
         print("[SUCCESS] Libraries loaded.")
-        self.speak_text("Libraries loaded. Initializing models.", wait=True)
+        self.speak_text("Libraries loaded.", wait=True)
 
         if self.use_llm:
             if not os.path.exists(self.model_path):
                 self.speak_text("Error. AI model missing.")
-                print(f"[ERROR] Model not found")
                 sys.exit(1)
 
             self.llm = Llama(
@@ -99,13 +91,12 @@ class Chaplin:
 
     # --- GPIO CALLBACKS ---
     def toggle_record_callback(self, channel):
-        # Toggle recording state
         self.recording = not self.recording
         if self.recording:
-            print("\n[REC] Started (GPIO)")
+            print("\n[REC] Started")
             self.play_tone(880, 0.15) 
         else:
-            print("\n[REC] Stopped (GPIO)")
+            print("\n[REC] Stopped")
             self.play_tone(440, 0.15)
 
     def quit_callback(self, channel):
@@ -174,12 +165,13 @@ class Chaplin:
         frame_count = 0
         output_path = ""
 
-        print("\n[READY] System Ready.")
-        self.speak_text("System ready. Press button one to record.", wait=True)
+        print("\n[READY] System Ready (Headless).")
+        self.speak_text("System ready.", wait=True)
 
         while True:
-            # Refresh GUI (required for imshow to work)
-            cv2.waitKey(1)
+            # OPTIMIZATION: Removed cv2.waitKey(1) and imshow
+            # Just a tiny sleep to prevent CPU spinning when not recording
+            time.sleep(0.005)
             
             if self.shutdown_flag:
                 self.speak_text("Shutting down.", wait=True)
@@ -190,23 +182,32 @@ class Chaplin:
                 frame = picam2.capture_array()
                 if frame is not None:
                     if self.recording:
+                        # Init Writer only when needed
                         if out is None:
                             output_path = f"{self.output_prefix}_{time.time_ns()}.mp4"
                             out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*"mp4v"), self.fps, (self.width, self.height))
+                        
+                        # RAW WRITE: No drawing, no copying. Fastest possible path.
                         out.write(frame)
+                        last_frame_time = current_time
                         frame_count += 1
                         
-                        # Visual Feedback
-                        if frame_count % 5 == 0:
-                            cv2.circle(frame, (30, 30), 10, (0, 0, 255), -1)
-                            cv2.imshow("Chaplin Pi", frame)
+                        # Audio "Heartbeat" every 10 seconds so you know it's working
+                        if frame_count % (self.fps * 10) == 0:
+                            print(f"[REC] {frame_count / self.fps:.0f}s")
+                            
                     else:
+                        # Stop Logic
                         if out: 
                             out.release(); out = None
-                            futures.append(self.executor.submit(self.perform_inference, output_path))
+                            # Only process if clip is > 1.0 second
+                            if frame_count > self.fps:
+                                futures.append(self.executor.submit(self.perform_inference, output_path))
+                            else:
+                                if os.path.exists(output_path): os.remove(output_path)
                             frame_count = 0
-                        cv2.imshow("Chaplin Pi", frame)
 
+            # Cleanup Threads
             for fut in futures:
                 if fut.done():
                     result = fut.result()
@@ -217,15 +218,14 @@ class Chaplin:
 
         picam2.stop()
         if out: out.release()
-        cv2.destroyAllWindows()
-        GPIO.cleanup() # Clean exit
+        GPIO.cleanup() 
         self.executor.shutdown(wait=False)
 
 @hydra.main(version_base=None, config_path="hydra_configs", config_name="default")
 def main(cfg):
     chaplin = Chaplin()
     
-    # HEAVY LOADING HAPPENS HERE
+    # HEAVY LOADING
     torch.set_num_threads(3)
     torch.backends.quantized.engine = 'qnnpack'
     device = torch.device("cpu")
